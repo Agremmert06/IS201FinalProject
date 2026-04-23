@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Jump Game</title>
+    <style>
+        body {
+            background-color: #f5f5f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            color: #333;
+        }
+
+        #gameCanvas {
+            display: block;
+            border-radius: 12px;
+            border: 1px solid #ddd;
+            background: #f0ede8;
+            cursor: pointer;
+        }
+
+        #ui {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 680px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #888;
+        }
+
+        #score-display {
+            font-size: 15px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        #msg {
+            text-align: center;
+            font-size: 13px;
+            color: #888;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Dino Jump</h1>
+
+    <div id="ui">
+        <span id="score-display">Score: 0</span>
+        <span id="hi-display">Best: 0</span>
+    </div>
+
+    <canvas id="gameCanvas" width="680" height="180"></canvas>
+    <div id="msg">Press Space or tap to start</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-display');
+        const hiEl = document.getElementById('hi-display');
+        const msgEl = document.getElementById('msg');
+
+        const W = canvas.width, H = canvas.height;
+        const GROUND = H - 40;
+        const GRAVITY = 0.6;
+        const JUMP_V = -13;
+
+        let state = 'idle';
+        let score = 0, hi = 0, frame = 0, speed = 4;
+        let dino, obstacles, clouds;
+
+        function reset() {
+            dino = { x: 80, y: GROUND, w: 40, h: 48, vy: 0, onGround: true, legFrame: 0 };
+            obstacles = [];
+            clouds = [
+                { x: 200, y: 40, w: 60 },
+                { x: 450, y: 25, w: 80 },
+                { x: 620, y: 50, w: 50 }
+            ];
+            score = 0;
+            frame = 0;
+            speed = 4;
+        }
+
+        function jump() {
+            if (state === 'idle' || state === 'dead') {
+                reset();
+                state = 'running';
+                msgEl.textContent = 'Space / tap to jump';
+                requestAnimationFrame(loop);
+                return;
+            }
+            if (state === 'running' && dino.onGround) {
+                dino.vy = JUMP_V;
+                dino.onGround = false;
+            }
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                jump();
+            }
+        });
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            jump();
+        }, { passive: false });
+
+        function spawnObstacle() {
+            const h = 30 + Math.random() * 30;
+            const w = 16 + Math.random() * 14;
+            const count = Math.random() < 0.35 ? 2 : 1;
+            obstacles.push({
+                x: W + 20,
+                y: GROUND + dino.h - h,
+                w: w * count + (count > 1 ? 6 : 0),
+                h,
+                count,
+                cw: w
+            });
+        }
+
+        function drawDino(d) {
+            ctx.fillStyle = '#444';
+            ctx.beginPath();
+            ctx.roundRect(d.x, d.y, d.w, d.h, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#f0ede8';
+            ctx.beginPath();
+            ctx.arc(d.x + d.w - 9, d.y + 9, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#444';
+            ctx.beginPath();
+            ctx.arc(d.x + d.w - 8, d.y + 8, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            const legOff = dino.onGround ? Math.sin(d.legFrame * 0.3) * 6 : 0;
+            ctx.fillStyle = '#444';
+            ctx.fillRect(d.x + 8, d.y + d.h, 8, 8 + legOff);
+            ctx.fillRect(d.x + 22, d.y + d.h, 8, 8 - legOff);
+            ctx.fillRect(d.x + d.w - 4, d.y + 10, 12, 7);
+        }
+
+        function drawDinoDead(d) {
+            ctx.fillStyle = '#e24b4a';
+            ctx.beginPath();
+            ctx.roundRect(d.x, d.y, d.w, d.h, 4);
+            ctx.fill();
+            ctx.fillStyle = '#f0ede8';
+            ctx.beginPath();
+            ctx.arc(d.x + d.w - 9, d.y + 9, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#e24b4a';
+            ctx.beginPath();
+            ctx.arc(d.x + d.w - 8, d.y + 8, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#e24b4a';
+            ctx.fillRect(d.x + 8, d.y + d.h, 8, 8);
+            ctx.fillRect(d.x + 22, d.y + d.h, 8, 8);
+            ctx.fillRect(d.x + d.w - 4, d.y + 10, 12, 7);
+        }
+
+        function drawCactus(ob) {
+            ctx.fillStyle = '#4a8a4a';
+            if (ob.count === 1) {
+                ctx.beginPath();
+                ctx.roundRect(ob.x + ob.cw * 0.3, ob.y, ob.cw * 0.4, ob.h, 3);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.roundRect(ob.x, ob.y + ob.h * 0.3, ob.cw * 0.3, ob.h * 0.35, 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.roundRect(ob.x + ob.cw * 0.7, ob.y + ob.h * 0.4, ob.cw * 0.3, ob.h * 0.3, 2);
+                ctx.fill();
+            } else {
+                for (let i = 0; i < 2; i++) {
+                    const cx = ob.x + i * (ob.cw + 6);
+                    ctx.beginPath();
+                    ctx.roundRect(cx + ob.cw * 0.3, ob.y, ob.cw * 0.4, ob.h, 3);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.roundRect(cx, ob.y + ob.h * 0.35, ob.cw * 0.3, ob.h * 0.3, 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        function drawCloud(cl) {
+            ctx.fillStyle = '#ddd';
+            ctx.beginPath();
+            ctx.ellipse(cl.x, cl.y, cl.w / 2, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cl.x - cl.w * 0.2, cl.y + 4, cl.w * 0.3, 9, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cl.x + cl.w * 0.2, cl.y + 5, cl.w * 0.25, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function collides(d, ob) {
+            const pad = 6;
+            return d.x + pad < ob.x + ob.w &&
+                   d.x + d.w - pad > ob.x &&
+                   d.y + pad < ob.y + ob.h &&
+                   d.y + d.h > ob.y + pad;
+        }
+
+        function loop() {
+            if (state !== 'running') return;
+            frame++;
+            score++;
+
+            if (score % 500 === 0) speed = Math.min(speed + 0.5, 12);
+
+            ctx.clearRect(0, 0, W, H);
+
+            clouds.forEach(cl => {
+                cl.x -= speed * 0.3;
+                if (cl.x + cl.w < 0) cl.x = W + cl.w;
+                drawCloud(cl);
+            });
+
+            ctx.fillStyle = '#aaa';
+            ctx.fillRect(0, GROUND + dino.h + 8, W, 2);
+
+            dino.vy += GRAVITY;
+            dino.y += dino.vy;
+            if (dino.y >= GROUND) {
+                dino.y = GROUND;
+                dino.vy = 0;
+                dino.onGround = true;
+            }
+            if (dino.onGround) dino.legFrame++;
+
+            const spawnInterval = Math.max(55 - Math.floor(score / 300), 28);
+            if (frame % spawnInterval === 0) spawnObstacle();
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].x -= speed;
+                drawCactus(obstacles[i]);
+                if (collides(dino, obstacles[i])) {
+                    state = 'dead';
+                    if (score > hi) {
+                        hi = score;
+                        hiEl.textContent = 'Best: ' + Math.floor(hi / 10);
+                    }
+                    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+                    ctx.fillRect(0, 0, W, H);
+                    drawDinoDead(dino);
+                    scoreEl.textContent = 'Score: ' + Math.floor(score / 10);
+                    msgEl.textContent = 'Game over! Press Space or tap to restart';
+                    return;
+                }
+                if (obstacles[i].x + obstacles[i].w < 0) obstacles.splice(i, 1);
+            }
+
+            drawDino(dino);
+            scoreEl.textContent = 'Score: ' + Math.floor(score / 10);
+            requestAnimationFrame(loop);
+        }
+
+        reset();
+    </script>
+
+</body>
+</html>
